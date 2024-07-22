@@ -1,104 +1,46 @@
-import numpy as np
 import pandas as pd
-import math
-from sklearn.model_selection import train_test_split
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.tree import DecisionTreeClassifier, plot_tree
+from sklearn.metrics import accuracy_score, classification_report
+from sklearn.preprocessing import OneHotEncoder
 
-class Node:
-    def __init__(self, feature=None, threshold=None, left=None, right=None, value=None):
-        self.feature = feature
-        self.threshold = threshold
-        self.left = left
-        self.right = right
-        self.value = value
-
-def calculate_entropy(y):
-    classes, counts = np.unique(y, return_counts=True)
-    probabilities = counts / len(y)
-    return -sum(p * math.log2(p) for p in probabilities if p > 0)
-
-def calculate_gini(y):
-    classes, counts = np.unique(y, return_counts=True)
-    probabilities = counts / len(y)
-    return 1 - sum(p ** 2 for p in probabilities)
-
-def calculate_gain(X, y, feature, threshold, criterion):
-    left_indices = X[:, feature] < threshold
-    y_left, y_right = y[left_indices], y[~left_indices]
-
-    if criterion == "entropy":
-        parent_metric = calculate_entropy(y)
-        left_metric = calculate_entropy(y_left)
-        right_metric = calculate_entropy(y_right)
-    else:  # Gini impurity
-        parent_metric = calculate_gini(y)
-        left_metric = calculate_gini(y_left)
-        right_metric = calculate_gini(y_right)
-    
-    weight_left = len(y_left) / len(y)
-    weight_right = len(y_right) / len(y)
-    
-    gain = parent_metric - (weight_left * left_metric + weight_right * right_metric)
-    return gain
-
-def build_tree(X, y, max_depth, criterion):
-    if len(set(y)) == 1 or max_depth == 0:
-        value = max(set(y), key=list(y).count)
-        return Node(value=value)
-    
-    n_features = X.shape[1]
-    best_feature = best_threshold = None
-    best_gain = -1
-    
-    for feature in range(n_features):
-        thresholds = np.unique(X[:, feature])
-        for threshold in thresholds:
-            gain = calculate_gain(X, y, feature, threshold, criterion)
-            if gain > best_gain:
-                best_gain = gain
-                best_feature = feature
-                best_threshold = threshold
-    
-    if best_gain == 0:
-        value = max(set(y), key=list(y).count)
-        return Node(value=value)
-    
-    left_indices = X[:, best_feature] < best_threshold
-    X_left, y_left = X[left_indices], y[left_indices]
-    X_right, y_right = X[~left_indices], y[~left_indices]
-    
-    left_subtree = build_tree(X_left, y_left, max_depth - 1, criterion)
-    right_subtree = build_tree(X_right, y_right, max_depth - 1, criterion)
-    
-    return Node(feature=best_feature, threshold=best_threshold, left=left_subtree, right=right_subtree)
-
-def predict_tree(tree, x):
-    if tree.value is not None:
-        return tree.value
-    if x[tree.feature] < tree.threshold:
-        return predict_tree(tree.left, x)
-    else:
-        return predict_tree(tree.right, x)
-
-def evaluate_tree(tree, X_test, y_test):
-    y_pred = [predict_tree(tree, x) for x in X_test]
-    accuracy = sum(y_pred == y_test) / len(y_test)
-    return accuracy
-
+# Load the dataset
 df = pd.read_csv("weather_forecast.csv")
+print(df.head())
 
-df = pd.get_dummies(df, drop_first=True)
+# One-hot encode categorical variables
+encoder = OneHotEncoder(drop='first')
+X_encoded = encoder.fit_transform(df.drop('Play', axis=1)).toarray()
+y = df['Play']
 
-X = df.drop('Play_Yes', axis=1).values
-y = df['Play_Yes'].values
+# Split the dataset
+X_train, X_test, y_train, y_test = train_test_split(X_encoded, y, test_size=0.2, random_state=42)
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+def train_evaluate_tree(criterion):
+    # Train the decision tree classifier
+    clf = DecisionTreeClassifier(criterion=criterion, random_state=42)
+    clf.fit(X_train, y_train)
+    
+    # Visualize the tree
+    plt.figure(figsize=(12, 8))
+    plot_tree(clf, filled=True, feature_names=encoder.get_feature_names_out(), class_names=['No', 'Yes'])
+    plt.show()
+    
+    # Evaluate the model
+    y_pred = clf.predict(X_test)
+    accuracy = accuracy_score(y_test, y_pred)
+    report = classification_report(y_test, y_pred)
+    
+    print(f"{criterion.upper()} Algorithm Results:")
+    print(f"Accuracy: {accuracy}")
+    print(f"Classification Report:\n{report}")
+    
+    # Cross-validation
+    cv_scores = cross_val_score(clf, X_encoded, y, cv=5)
+    print(f"Cross-Validation Scores ({criterion.upper()}):", cv_scores)
+    print(f"Mean CV Accuracy ({criterion.upper()}):", cv_scores.mean())
 
-tree_id3 = build_tree(X_train, y_train, max_depth=5, criterion="entropy")
-accuracy_id3 = evaluate_tree(tree_id3, X_test, y_test)
-print("ID3 Algorithm Results:")
-print(f"Accuracy: {accuracy_id3}")
-
-tree_cart = build_tree(X_train, y_train, max_depth=5, criterion="gini")
-accuracy_cart = evaluate_tree(tree_cart, X_test, y_test)
-print("CART Algorithm Results:")
-print(f"Accuracy: {accuracy_cart}")
+# Train and evaluate ID3 (entropy) and CART (gini) classifiers
+train_evaluate_tree('entropy')
+train_evaluate_tree('gini')
