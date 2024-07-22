@@ -1,4 +1,3 @@
-
 import heapq
 
 def best_first_search(graph, start, goal, heuristic):
