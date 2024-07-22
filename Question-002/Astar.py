@@ -130,5 +130,3 @@ goal = 'D'
 path, total_cost = astar(graph, start, goal, heuristic, cost)
 print("Optimal path =", path)
 print("Total cost =", total_cost)
-
-"""
